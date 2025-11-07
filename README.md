@@ -1,5 +1,7 @@
 # KubeTemplater Operator
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/ariellpe/KubeTemplater)](https://goreportcard.com/report/github.com/ariellpe/KubeTemplater) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![GitHub release (latest by date)](https://img.shields.io/github/v/release/ariellpe/KubeTemplater)](https://github.com/ariellpe/KubeTemplater/releases) [![Built with Go](https://img.shields.io/badge/Built%20with-Go-1976D2.svg)](https://go.dev/) [![Powered by Kubernetes](https://img.shields.io/badge/Powered%20by-Kubernetes-326CE5.svg)](https://kubernetes.io/) [![Built with Kubebuilder](https://img.shields.io/badge/Built%20with-Kubebuilder-8B572A.svg)](https://book.kubebuilder.io/) [![Community](https://img.shields.io/badge/Community-Join%20Us-blueviolet)](https://github.com/ariellpe/KubeTemplater/issues) [![Documentation](https://img.shields.io/badge/Documentation-Read%20the%20Docs-blue)](https://github.com/ariellpe/KubeTemplater/blob/main/README.md) [![CI](https://github.com/ariellpe/KubeTemplater/actions/workflows/test.yml/badge.svg)](https://github.com/ariellpe/KubeTemplater/actions/workflows/test.yml) [![CD](https://github.com/ariellpe/KubeTemplater/actions/workflows/release.yml/badge.svg)](https://github.com/ariellpe/KubeTemplater/actions/workflows/release.yml) [![Code Quality](https://img.shields.io/badge/Code%20Quality-A%2B-yellowgreen)](https://goreportcard.com/report/github.com/ariellpe/KubeTemplater) [![Sponsors](https://img.shields.io/badge/Sponsors-Donate-df4aaa.svg)](https://github.com/sponsors/ariellpe) [![Changelog](https://img.shields.io/badge/Changelog-Read%20Me-green)](CHANGELOG.md)
+
 **KubeTemplater** is a lightweight Kubernetes operator that dynamically renders and applies Kubernetes resources using Go templates defined within your `ConfigMap`s.
 
 It allows you to manage the state of multiple resources from a single configuration file, acting as a config-driven resource generator.
@@ -183,18 +185,18 @@ This project has a [Code of Conduct](CODE_OF_CONDUCT.md) that all contributors a
 
 ---
 
+## Security
+
+If you discover a security vulnerability, please see our [Security Policy](SECURITY.md).
+
+---
+
 ## License
 
-Copyright 2025.
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+---
 
-    http://www.apache.org/licenses/LICENSE-2.0
+## Acknowledgments
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+This project was built using the [Kubebuilder](https://book.kubebuilder.io/) framework.
