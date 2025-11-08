@@ -11,5 +11,5 @@ roleRef:
   name: kubetemplater-manager-role
 subjects:
 - kind: ServiceAccount
-  name: kubetemplater-controller-manager
-  namespace: kubetemplater-system
+  name: {{ include "kubetemplater.serviceAccountName" . }}
+  namespace: {{.Release.Namespace}}

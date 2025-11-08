@@ -1,10 +1,21 @@
+# KubeTemplater Controller values
+#
+# NOTE: The controller supports a special annotation on the resources it manages:
+#
+#   kubetemplater.io/replace-enabled: "true"
+#
+# When this annotation is present on a resource (like a Deployment), the controller
+# will perform a "replace" (delete and re-create) operation if an update fails
+# due to an immutable field change.
+
 replicaCount: 1
 
 image:
-  repository: controller
+  repository: kubetemplater
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
+
 
 podAnnotations: {}
 
@@ -15,4 +26,4 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: ""
+  name: "kubetemplater"

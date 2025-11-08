@@ -5,12 +5,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kubetemplater
   name: kubetemplater-leader-election-rolebinding
-  namespace: kubetemplater-system
+  namespace: {{.Release.Namespace}}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: kubetemplater-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: kubetemplater-controller-manager
-  namespace: kubetemplater-system
+  name: {{ include "kubetemplater.serviceAccountName" . }}
+  namespace: {{.Release.Namespace}}

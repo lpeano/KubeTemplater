@@ -4,6 +4,7 @@ metadata:
   name: {{ include "kubetemplater.fullname" . }}
   labels:
     {{- include "kubetemplater.labels" . | nindent 4 }}
+  namespace: {{.Release.Namespace}}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -26,6 +27,7 @@ spec:
         command:
         - /manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         livenessProbe:
           httpGet:
             path: /healthz
