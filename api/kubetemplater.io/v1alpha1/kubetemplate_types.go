@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -36,7 +38,11 @@ type Template struct {
 
 // KubeTemplateStatus defines the observed state of KubeTemplate.
 type KubeTemplateStatus struct {
-	Status string `json:"status,omitempty"`
+	Status          string     `json:"status,omitempty"`
+	ProcessingPhase string     `json:"processingPhase,omitempty"` // Queued, Processing, Completed, Failed
+	QueuedAt        *time.Time `json:"queuedAt,omitempty"`
+	ProcessedAt     *time.Time `json:"processedAt,omitempty"`
+	RetryCount      int        `json:"retryCount,omitempty"`
 }
 
 // +kubebuilder:object:root=true
