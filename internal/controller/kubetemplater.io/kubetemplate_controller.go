@@ -57,29 +57,26 @@ func (r *KubeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// Use indexed field to find the policy for this namespace (O(1) instead of O(n))
 	var policies kubetemplateriov1alpha1.KubeTemplatePolicyList
-	if err := r.List(ctx, &policies, client.InNamespace(r.OperatorNamespace)); err != nil {
+	if err := r.List(ctx, &policies,
+		client.InNamespace(r.OperatorNamespace),
+		client.MatchingFields{"spec.sourceNamespace": kubeTemplate.Namespace}); err != nil {
 		log.Error(err, "Failed to list KubeTemplatePolicies")
 		return ctrl.Result{}, err
 	}
 
-	var matchedPolicy *kubetemplateriov1alpha1.KubeTemplatePolicy
-	for i := range policies.Items {
-		p := &policies.Items[i]
-		if p.Spec.SourceNamespace == kubeTemplate.Namespace {
-			if matchedPolicy != nil {
-				log.Info("Found multiple KubeTemplatePolicies for source namespace", "namespace", kubeTemplate.Namespace)
-				kubeTemplate.Status.Status = "Error: Found multiple KubeTemplatePolicies for source namespace"
-				if err := r.Status().Update(ctx, &kubeTemplate); err != nil {
-					log.Error(err, "Failed to update KubeTemplate status")
-				}
-				return ctrl.Result{}, fmt.Errorf("found multiple KubeTemplatePolicies for source namespace %s", kubeTemplate.Namespace)
-			}
-			matchedPolicy = p
+	// Check for multiple policies (ambiguous configuration)
+	if len(policies.Items) > 1 {
+		log.Info("Found multiple KubeTemplatePolicies for source namespace", "namespace", kubeTemplate.Namespace)
+		kubeTemplate.Status.Status = "Error: Found multiple KubeTemplatePolicies for source namespace"
+		if err := r.Status().Update(ctx, &kubeTemplate); err != nil {
+			log.Error(err, "Failed to update KubeTemplate status")
 		}
+		return ctrl.Result{}, fmt.Errorf("found multiple KubeTemplatePolicies for source namespace %s", kubeTemplate.Namespace)
 	}
 
-	if matchedPolicy == nil {
+	if len(policies.Items) == 0 {
 		log.Info("No KubeTemplatePolicy found for source namespace", "namespace", kubeTemplate.Namespace)
 		kubeTemplate.Status.Status = "Error: No KubeTemplatePolicy found for source namespace"
 		if err := r.Status().Update(ctx, &kubeTemplate); err != nil {
@@ -88,7 +85,7 @@ func (r *KubeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("no KubeTemplatePolicy found for source namespace %s", kubeTemplate.Namespace)
 	}
 
-	policy := *matchedPolicy
+	policy := policies.Items[0]
 
 	for _, template := range kubeTemplate.Spec.Templates {
 		var obj unstructured.Unstructured

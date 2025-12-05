@@ -94,34 +94,30 @@ func (v *KubeTemplateValidator) ValidateDelete(ctx context.Context, obj runtime.
 func (v *KubeTemplateValidator) validateKubeTemplate(ctx context.Context, kubeTemplate *kubetemplateriov1alpha1.KubeTemplate) (admission.Warnings, error) {
 	log := logf.FromContext(ctx)
 
-	// List all policies in the operator namespace
+	// Use indexed field to find the policy for this namespace (O(1) instead of O(n))
 	var policies kubetemplateriov1alpha1.KubeTemplatePolicyList
-	if err := v.Client.List(ctx, &policies, client.InNamespace(v.OperatorNamespace)); err != nil {
+	if err := v.Client.List(ctx, &policies,
+		client.InNamespace(v.OperatorNamespace),
+		client.MatchingFields{"spec.sourceNamespace": kubeTemplate.Namespace}); err != nil {
 		log.Error(err, "Failed to list KubeTemplatePolicies")
 		return nil, fmt.Errorf("failed to list KubeTemplatePolicies: %w", err)
 	}
 
-	// Find the matching policy for this KubeTemplate's namespace
-	var matchedPolicy *kubetemplateriov1alpha1.KubeTemplatePolicy
-	var matchedPolicies []string
-
-	for i := range policies.Items {
-		p := &policies.Items[i]
-		if p.Spec.SourceNamespace == kubeTemplate.Namespace {
-			matchedPolicies = append(matchedPolicies, p.Name)
-			matchedPolicy = p
-		}
-	}
-
 	// Check for multiple policies (ambiguous configuration)
-	if len(matchedPolicies) > 1 {
-		return nil, fmt.Errorf("multiple KubeTemplatePolicies found for source namespace %s: %v. Only one policy per source namespace is allowed", kubeTemplate.Namespace, matchedPolicies)
+	if len(policies.Items) > 1 {
+		var policyNames []string
+		for i := range policies.Items {
+			policyNames = append(policyNames, policies.Items[i].Name)
+		}
+		return nil, fmt.Errorf("multiple KubeTemplatePolicies found for source namespace %s: %v. Only one policy per source namespace is allowed", kubeTemplate.Namespace, policyNames)
 	}
 
 	// Check if a policy exists
-	if matchedPolicy == nil {
+	if len(policies.Items) == 0 {
 		return nil, fmt.Errorf("no KubeTemplatePolicy found for source namespace %s. A policy must be defined in namespace %s", kubeTemplate.Namespace, v.OperatorNamespace)
 	}
+
+	matchedPolicy := &policies.Items[0]
 
 	log.Info("Found matching policy", "policy", matchedPolicy.Name, "sourceNamespace", matchedPolicy.Spec.SourceNamespace)
 

@@ -210,6 +210,15 @@ func main() {
 		setupLog.Info("OPERATOR_NAMESPACE not set, falling back to 'default' namespace. For production, this should be set to the namespace where the operator is running.")
 	}
 
+	// Setup field indexer for KubeTemplatePolicy.Spec.SourceNamespace for efficient policy lookups
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &kubetemplateriov1alpha1.KubeTemplatePolicy{}, "spec.sourceNamespace", func(obj client.Object) []string {
+		policy := obj.(*kubetemplateriov1alpha1.KubeTemplatePolicy)
+		return []string{policy.Spec.SourceNamespace}
+	}); err != nil {
+		setupLog.Error(err, "unable to create field indexer for KubeTemplatePolicy")
+		os.Exit(1)
+	}
+
 	if err := (&kubetemplateriocontroller.KubeTemplateReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
