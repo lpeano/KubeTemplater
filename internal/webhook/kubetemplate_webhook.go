@@ -166,7 +166,7 @@ func (v *KubeTemplateValidator) validateKubeTemplate(ctx context.Context, kubeTe
 
 		// Validate field validations if present
 		if len(matchedRule.FieldValidations) > 0 {
-			if err := v.validateFieldValidations(ctx, matchedRule.FieldValidations, &obj, idx, gvk.String()); err != nil {
+			if err := v.validateFieldValidations(ctx, matchedRule.FieldValidations, &obj, idx); err != nil {
 				return warnings, err
 			}
 		}
@@ -182,7 +182,7 @@ func (v *KubeTemplateValidator) validateKubeTemplate(ctx context.Context, kubeTe
 }
 
 // validateFieldValidations validates all field validations for a resource
-func (v *KubeTemplateValidator) validateFieldValidations(ctx context.Context, validations []kubetemplateriov1alpha1.FieldValidation, obj *unstructured.Unstructured, templateIdx int, gvkStr string) error {
+func (v *KubeTemplateValidator) validateFieldValidations(ctx context.Context, validations []kubetemplateriov1alpha1.FieldValidation, obj *unstructured.Unstructured, templateIdx int) error {
 	log := logf.FromContext(ctx)
 
 	for validationIdx, validation := range validations {
