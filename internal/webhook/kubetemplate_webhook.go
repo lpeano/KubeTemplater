@@ -402,12 +402,11 @@ func (v *KubeTemplateValidator) validateCELRule(rule string, obj *unstructured.U
 		}
 	}
 
-	// Create CEL environment with cost limit
+	// Create CEL environment
 	env, err := cel.NewEnv(
 		cel.Declarations(
 			decls.NewVar(varName, varType),
 		),
-		cel.CostLimit(1000000), // Limit to 1M cost units
 	)
 	if err != nil {
 		errPrefix := fmt.Sprintf("template[%d]", templateIdx)
@@ -437,8 +436,8 @@ func (v *KubeTemplateValidator) validateCELRule(rule string, obj *unstructured.U
 		return fmt.Errorf("%s: failed to check CEL rule: %w", errPrefix, issues.Err())
 	}
 
-	// Create CEL program with cost tracking
-	prg, err := env.Program(checked, cel.CostTracking(nil))
+	// Create CEL program with cost limit and tracking
+	prg, err := env.Program(checked, cel.CostTracking(nil), cel.CostLimit(1000000))
 	if err != nil {
 		errPrefix := fmt.Sprintf("template[%d]", templateIdx)
 		if validationName != "" {
