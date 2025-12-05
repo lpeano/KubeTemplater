@@ -27,3 +27,45 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: "kubetemplater"
+
+# Webhook configuration
+webhook:
+  # Enable or disable the validating webhook
+  enabled: true
+  
+  # Certificate management mode
+  # - "cloud-native": Use cloud provider's native certificate management
+  #   (Works for AKS and GKE - they auto-inject caBundle when omitted)
+  #   (Recommended for Azure AKS and Google GKE)
+  # - "cert-manager": Use cert-manager for certificate management
+  #   (Required for AWS EKS, works for all clusters)
+  # - "manual": Provide your own certificates
+  #   (For air-gapped, corporate PKI, or custom setups)
+  certificateMode: "cloud-native"
+  
+  # cert-manager configuration (only used when certificateMode=cert-manager)
+  certManager:
+    # Issuer name (leave empty to use self-signed issuer created by chart)
+    issuerName: ""
+    # Issuer kind (Issuer or ClusterIssuer)
+    issuerKind: "Issuer"
+  
+  # Manual certificate configuration (only used when certificateMode=manual)
+  # Provide base64-encoded PEM certificate and key
+  certificate:
+    caBundle: ""
+    tlsCert: ""
+    tlsKey: ""
+  
+  # Webhook service configuration
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Webhook failure policy (Fail or Ignore)
+  # Fail: Reject requests if webhook is unavailable (recommended)
+  # Ignore: Allow requests if webhook is unavailable
+  failurePolicy: Fail
+  
+  # Webhook timeout in seconds
+  timeoutSeconds: 10

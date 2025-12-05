@@ -6,11 +6,17 @@ This guide will walk you through the installation of the KubeTemplater operator.
 
 Before you begin, ensure you have the following tools installed and configured:
 
-- **Go**: Version `v1.24.0` or higher.
-- **Docker**: Version `17.03` or higher.
+- **Go**: Version `v1.24.0` or higher (for building from source).
+- **Docker**: Version `17.03` or higher (for building from source).
 - **kubectl**: Version `v1.11.3` or higher.
 - **Helm**: Version `v3.0.0` or higher.
 - Access to a Kubernetes cluster (e.g., Minikube, Kind, or a cloud provider's cluster).
+- **cert-manager** (optional, required for EKS): For automatic TLS certificate management for the validating webhook.
+
+> **Cloud Provider Users**: See dedicated installation guides:
+> - **[Azure AKS](aks-installation.md)** - Native certificate management (no cert-manager needed)
+> - **[Google GKE](gke-installation.md)** - Native certificate management (no cert-manager needed)
+> - **[Amazon EKS](eks-installation.md)** - Requires cert-manager installation
 
 ## Installation Methods
 
@@ -23,33 +29,111 @@ You can install the operator in two ways:
 
 ### 1. Installation with Helm
 
-The provided Helm chart is the recommended way to install KubeTemplater.
+The provided Helm chart is the recommended way to install KubeTemplater. The chart includes:
+- Custom Resource Definitions (CRDs) for `KubeTemplate` and `KubeTemplatePolicy`
+- Validating webhook for policy enforcement
+- Controller manager with RBAC permissions
+- Metrics and monitoring endpoints
 
-1.  **Add the Helm Repository (if available)**
-    *(Note: This step is a placeholder. If a repository is set up, update the command.)*
-    ```sh
-    # helm repo add kubetemplater <repository-url>
-    # helm repo update
-    ```
+**Current Chart Version**: `0.2.0`
 
-2.  **Install the Chart**
-    To install the chart from the local directory, run the following command. This will create a new namespace for the operator and deploy it.
+#### Quick Install
 
-    ```sh
-    helm install kubetemplater ./charts/kubetemplater \
-      --namespace kubetemplater-system \
-      --create-namespace
-    ```
+To install the chart from the local directory with default values:
 
-3.  **Customize the Installation**
-    You can customize the deployment by creating a `my-values.yaml` file and passing it during installation:
+```sh
+helm install kubetemplater ./charts/kubetemplater \
+  --namespace kubetemplater-system \
+  --create-namespace
+```
 
-    ```sh
-    helm install kubetemplater ./charts/kubetemplater \
-      --namespace kubetemplater-system \
-      --create-namespace \
-      -f my-values.yaml
-    ```
+This will:
+1. Create the `kubetemplater-system` namespace
+2. Install CRDs with support for field-level validations
+3. Deploy the validating webhook with TLS configuration
+4. Start the controller manager
+
+#### Verify Installation
+
+Check that all pods are running:
+
+```sh
+kubectl get pods -n kubetemplater-system
+```
+
+Verify webhook configuration:
+
+```sh
+kubectl get validatingwebhookconfigurations
+```
+
+#### Customize the Installation
+
+You can customize the deployment by creating a `my-values.yaml` file and passing it during installation:
+
+```sh
+helm install kubetemplater ./charts/kubetemplater \
+  --namespace kubetemplater-system \
+  --create-namespace \
+  -f my-values.yaml
+```
+
+**Common customizations:**
+- Image repository and tag
+- Resource limits and requests
+- Replica count
+- Webhook TLS certificate configuration
+- Metrics service settings
+
+---
+
+## What's New in v0.2.0
+
+### Field-Level Validations
+
+Version 0.2.0 introduces granular field validation in policies. You can now validate specific fields in resources using multiple validation types:
+
+- **CEL**: Common Expression Language for complex logic
+- **Regex**: Pattern matching for strings
+- **Range**: Numeric min/max validation
+- **Required**: Enforce mandatory fields
+- **Forbidden**: Prevent specific fields for security
+
+Example policy with field validations:
+
+```yaml
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplatePolicy
+metadata:
+  name: security-policy
+  namespace: kubetemplater-system
+spec:
+  sourceNamespace: default
+  validationRules:
+    - kind: Deployment
+      group: apps
+      version: v1
+      targetNamespaces: [default]
+      fieldValidations:
+        - fieldPath: spec.replicas
+          validationType: Range
+          minValue: 1
+          maxValue: 10
+        - fieldPath: spec.template.spec.containers[0].image
+          validationType: Regex
+          regexPattern: "^(nginx|redis|postgres):"
+        - fieldPath: spec.template.spec.securityContext.runAsNonRoot
+          validationType: Required
+```
+
+See [Features Documentation](features.md) for complete details.
+
+### Validating Webhook
+
+The webhook validates all `KubeTemplate` resources before they are accepted by the cluster, ensuring policy compliance at admission time. This provides:
+- Real-time validation feedback
+- Prevention of non-compliant resources
+- CEL and field-level rule enforcement
 
 ---
 
@@ -86,6 +170,12 @@ Follow these steps to build and deploy the operator from the source code.
 
 ```sh
 helm uninstall kubetemplater --namespace kubetemplater-system
+```
+
+> **Note**: This will remove the controller and webhook, but CRDs are preserved by default. To remove CRDs manually:
+```sh
+kubectl delete crd kubetemplates.kubetemplater.io.my.company.com
+kubectl delete crd kubetemplatepolicies.kubetemplater.io.my.company.com
 ```
 
 **To uninstall from a source installation:**

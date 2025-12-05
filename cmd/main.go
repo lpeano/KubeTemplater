@@ -37,7 +37,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/tuo-utente/kube-templater/internal/controller"
+	kubetemplateriov1alpha1 "github.com/lpeano/KubeTemplater/api/kubetemplater.io/v1alpha1"
+	kubetemplateriocontroller "github.com/lpeano/KubeTemplater/internal/controller/kubetemplater.io"
+	kubetemplaterwebhook "github.com/lpeano/KubeTemplater/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,6 +51,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(kubetemplateriov1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -200,11 +203,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ConfigMapReconciler{
+	operatorNamespace := os.Getenv("OPERATOR_NAMESPACE")
+	if operatorNamespace == "" {
+		// Fallback to a default namespace if the env var is not set, for local development.
+		operatorNamespace = "default"
+		setupLog.Info("OPERATOR_NAMESPACE not set, falling back to 'default' namespace. For production, this should be set to the namespace where the operator is running.")
+	}
+
+	if err := (&kubetemplateriocontroller.KubeTemplateReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		OperatorNamespace: operatorNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "KubeTemplate")
+		os.Exit(1)
+	}
+	if err := (&kubetemplateriocontroller.KubeTemplatePolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ConfigMap")
+		setupLog.Error(err, "unable to create controller", "controller", "KubeTemplatePolicy")
+		os.Exit(1)
+	}
+
+	// Setup webhook for KubeTemplate validation
+	if err := (&kubetemplaterwebhook.KubeTemplateValidator{
+		Client:            mgr.GetClient(),
+		OperatorNamespace: operatorNamespace,
+	}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "KubeTemplate")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

@@ -1,0 +1,193 @@
+# Sample configuration demonstrating webhook validation
+# This shows a complete setup with policy and templates
+
+---
+# Step 1: Create a KubeTemplatePolicy in the operator namespace
+# This policy controls what resources can be created from app-namespace
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplatePolicy
+metadata:
+  name: app-namespace-policy
+  namespace: kubetemplater-system  # Must be in operator namespace
+spec:
+  sourceNamespace: app-namespace  # KubeTemplates from this namespace
+  validationRules:
+    # Allow ConfigMaps in multiple namespaces
+    - kind: ConfigMap
+      group: ""
+      version: v1
+      targetNamespaces:
+        - app-namespace
+        - app-namespace-dev
+        - app-namespace-prod
+    
+    # Allow Secrets with naming constraint (must start with 'secure-')
+    - kind: Secret
+      group: ""
+      version: v1
+      rule: "object.metadata.name.startsWith('secure-')"
+      targetNamespaces:
+        - app-namespace
+        - app-namespace-prod
+    
+    # Allow Services only in app namespace
+    - kind: Service
+      group: ""
+      version: v1
+      targetNamespaces:
+        - app-namespace
+    
+    # Allow Deployments with replica constraint (max 10 replicas)
+    - kind: Deployment
+      group: apps
+      version: v1
+      rule: "object.spec.replicas <= 10"
+      targetNamespaces:
+        - app-namespace
+        - app-namespace-dev
+
+---
+# Step 2: Create a KubeTemplate that will be validated by the webhook
+# This template will pass validation and create resources
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplate
+metadata:
+  name: sample-app-template
+  namespace: app-namespace  # Must match policy's sourceNamespace
+spec:
+  templates:
+    # Template 1: ConfigMap - Valid
+    - object:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: app-config
+          namespace: app-namespace
+        data:
+          database_host: "postgresql.svc.cluster.local"
+          database_port: "5432"
+          log_level: "info"
+    
+    # Template 2: Secret - Valid (name starts with 'secure-')
+    - object:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: secure-database-credentials
+          namespace: app-namespace
+        type: Opaque
+        stringData:
+          username: "app_user"
+          password: "super_secret_password"
+    
+    # Template 3: Deployment - Valid (2 replicas <= 10)
+    - object:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: sample-app
+          namespace: app-namespace
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: sample-app
+          template:
+            metadata:
+              labels:
+                app: sample-app
+            spec:
+              containers:
+                - name: app
+                  image: nginx:1.21
+                  ports:
+                    - containerPort: 8080
+                  env:
+                    - name: DATABASE_HOST
+                      valueFrom:
+                        configMapKeyRef:
+                          name: app-config
+                          key: database_host
+    
+    # Template 4: Service - Valid
+    - object:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: sample-app-service
+          namespace: app-namespace
+        spec:
+          selector:
+            app: sample-app
+          ports:
+            - protocol: TCP
+              port: 80
+              targetPort: 8080
+          type: ClusterIP
+
+---
+# Example: Invalid KubeTemplate (will be rejected by webhook)
+# Uncomment to test validation failures
+#
+# apiVersion: kubetemplater.io/v1alpha1
+# kind: KubeTemplate
+# metadata:
+#   name: invalid-template
+#   namespace: app-namespace
+# spec:
+#   templates:
+#     # This will FAIL: Secret name doesn't start with 'secure-'
+#     - object:
+#         apiVersion: v1
+#         kind: Secret
+#         metadata:
+#           name: bad-secret-name  # ❌ Doesn't start with 'secure-'
+#           namespace: app-namespace
+#         type: Opaque
+#         stringData:
+#           key: value
+#
+#     # This will FAIL: Too many replicas
+#     - object:
+#         apiVersion: apps/v1
+#         kind: Deployment
+#         metadata:
+#           name: oversized-deployment
+#           namespace: app-namespace
+#         spec:
+#           replicas: 20  # ❌ Exceeds max of 10
+#           selector:
+#             matchLabels:
+#               app: test
+#           template:
+#             metadata:
+#               labels:
+#                 app: test
+#             spec:
+#               containers:
+#                 - name: test
+#                   image: nginx
+#
+#     # This will FAIL: Resource type not allowed
+#     - object:
+#         apiVersion: v1
+#         kind: PersistentVolumeClaim  # ❌ Not in policy
+#         metadata:
+#           name: my-pvc
+#           namespace: app-namespace
+#         spec:
+#           accessModes:
+#             - ReadWriteOnce
+#           resources:
+#             requests:
+#               storage: 1Gi
+#
+#     # This will FAIL: Wrong target namespace
+#     - object:
+#         apiVersion: v1
+#         kind: ConfigMap
+#         metadata:
+#           name: wrong-ns-config
+#           namespace: forbidden-namespace  # ❌ Not in targetNamespaces
+#         data:
+#           key: value

@@ -1,0 +1,87 @@
+# Example values for Google Kubernetes Engine (GKE) deployment
+# 
+# GKE supports native certificate management similar to AKS.
+# When caBundle is omitted from ValidatingWebhookConfiguration,
+# GKE automatically generates and injects TLS certificates.
+#
+# Usage:
+#   helm install kubetemplater ./charts/kubetemplater \
+#     --namespace kubetemplater-system \
+#     --create-namespace \
+#     -f examples/values-gke.yaml
+
+replicaCount: 2  # High availability in production
+
+image:
+  repository: gcr.io/<your-project-id>/kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "0.2.0"
+
+# Enable pod disruption budget for HA
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8443"
+
+serviceAccount:
+  create: true
+  annotations:
+    # GKE Workload Identity (if using)
+    # iam.gke.io/gcp-service-account: "<sa-name>@<project-id>.iam.gserviceaccount.com"
+  name: "kubetemplater"
+
+# Webhook configuration with GKE native certificate management
+webhook:
+  enabled: true
+  
+  # Use GKE native certificate management (recommended for GKE)
+  # GKE automatically generates and injects certificates - no cert-manager needed!
+  certificateMode: "cloud-native"
+  
+  # Alternative: Use cert-manager
+  # First install cert-manager, then set:
+  # certificateMode: "cert-manager"
+  # certManager:
+  #   issuerName: ""
+  #   issuerKind: "Issuer"
+  
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Fail requests if webhook is unavailable (recommended for security)
+  failurePolicy: Fail
+  
+  # Webhook timeout
+  timeoutSeconds: 10
+
+# Resource limits optimized for production GKE
+resources:
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector for system node pool (if using)
+# nodeSelector:
+#   cloud.google.com/gke-nodepool: system-pool
+
+# Tolerations for system taints
+# tolerations:
+# - key: CriticalAddonsOnly
+#   operator: Exists
+
+# Affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - kubetemplater
+        topologyKey: kubernetes.io/hostname

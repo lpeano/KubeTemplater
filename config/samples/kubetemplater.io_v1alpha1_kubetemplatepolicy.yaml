@@ -1,0 +1,76 @@
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplatePolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: kubetemplater
+    app.kubernetes.io/managed-by: kustomize
+  name: kubetemplatepolicy-sample
+  namespace: kubetemplater-system
+spec:
+  # This policy applies to KubeTemplates in the 'default' namespace
+  sourceNamespace: default
+  
+  # Define which resources can be created and where
+  validationRules:
+    # Allow ConfigMaps in default namespace with required team label
+    - kind: ConfigMap
+      group: ""
+      version: v1
+      targetNamespaces: [default]
+      fieldValidations:
+        - name: "team-label-required"
+          fieldPath: "metadata.labels.team"
+          type: required
+          message: "ConfigMaps must have a 'team' label"
+    
+    # Allow Deployments in default namespace with multiple validations
+    - kind: Deployment
+      group: apps
+      version: v1
+      targetNamespaces: [default]
+      fieldValidations:
+        - name: "replica-limit"
+          fieldPath: "spec.replicas"
+          type: range
+          min: 1
+          max: 10
+          message: "Replicas must be between 1 and 10"
+        - name: "dns-compliant-name"
+          fieldPath: "metadata.name"
+          type: regex
+          regex: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          message: "Name must be DNS-compliant"
+    
+    # Allow CronJobs in default namespace
+    - kind: CronJob
+      group: batch
+      version: v1
+      targetNamespaces: [default]
+    
+    # Allow Secrets in default and kube-system namespaces
+    # with CEL rule requiring names to start with 'secure-'
+    - kind: Secret
+      group: ""
+      version: v1
+      targetNamespaces: [default, kube-system]
+      fieldValidations:
+        - name: "secure-prefix"
+          fieldPath: "metadata.name"
+          type: cel
+          cel: "value.startsWith('secure-')"
+          message: "Secret names must start with 'secure-'"
+    
+    # Allow Pods with security constraints
+    - kind: Pod
+      group: ""
+      version: v1
+      targetNamespaces: [default]
+      fieldValidations:
+        - name: "no-host-network"
+          fieldPath: "spec.hostNetwork"
+          type: forbidden
+          message: "Host network is not allowed for security reasons"
+        - name: "resource-limits-required"
+          type: cel
+          cel: "object.spec.containers.all(c, has(c.resources) && has(c.resources.limits))"
+          message: "All containers must define resource limits"

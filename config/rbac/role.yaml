@@ -7,32 +7,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - configmaps/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - '*'
-  resources:
   - '*'
   verbs:
   - create
@@ -42,3 +16,32 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kubetemplater.io
+  resources:
+  - kubetemplatepolicies
+  - kubetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubetemplater.io
+  resources:
+  - kubetemplatepolicies/finalizers
+  - kubetemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kubetemplater.io
+  resources:
+  - kubetemplatepolicies/status
+  - kubetemplates/status
+  verbs:
+  - get
+  - patch
+  - update

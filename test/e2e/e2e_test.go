@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/tuo-utente/kube-templater/test/utils"
+	"github.com/lpeano/KubeTemplater/test/utils"
 )
 
 // namespace where the project is deployed in

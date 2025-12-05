@@ -1,0 +1,151 @@
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - v*.*.*
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  imageName: 'kubetemplater'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  # Azure Container Registry name (update with your ACR name)
+  acrServiceConnection: 'acr-connection'
+  containerRegistry: 'myacr.azurecr.io'
+  
+  # GitHub Container Registry (alternative)
+  # githubServiceConnection: 'github-packages'
+  # containerRegistry: 'ghcr.io/$(Build.Repository.Name)'
+
+stages:
+  - stage: Build
+    displayName: 'Build and Push Docker Image'
+    jobs:
+      - job: BuildImage
+        displayName: 'Build Docker Image'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: Docker@2
+            displayName: 'Login to Azure Container Registry'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: build
+              repository: $(imageName)
+              dockerfile: $(dockerfilePath)
+              containerRegistry: $(acrServiceConnection)
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+                latest
+              arguments: |
+                --build-arg VERSION=$(Build.SourceBranchName)
+                --build-arg COMMIT=$(Build.SourceVersion)
+                --platform linux/amd64,linux/arm64
+
+          - task: Docker@2
+            displayName: 'Push Docker Image to ACR'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              command: push
+              repository: $(imageName)
+              containerRegistry: $(acrServiceConnection)
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+                latest
+
+          - task: AzureCLI@2
+            displayName: 'Scan Image with Trivy'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              azureSubscription: $(acrServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                # Install Trivy
+                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+                echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+                sudo apt-get update
+                sudo apt-get install trivy -y
+                
+                # Scan image
+                trivy image --severity HIGH,CRITICAL \
+                  --format sarif \
+                  --output trivy-results.sarif \
+                  $(containerRegistry)/$(imageName):$(Build.BuildId)
+                
+                # Display results
+                trivy image --severity HIGH,CRITICAL \
+                  $(containerRegistry)/$(imageName):$(Build.BuildId)
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Trivy Scan Results'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              PathtoPublish: 'trivy-results.sarif'
+              ArtifactName: 'trivy-scan-results'
+              publishLocation: 'Container'
+
+  - stage: TagRelease
+    displayName: 'Tag Release Image'
+    dependsOn: Build
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+    jobs:
+      - job: TagImage
+        displayName: 'Tag Image with Version'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: Docker@2
+            displayName: 'Login to Azure Container Registry'
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Bash@3
+            displayName: 'Tag and Push Version'
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Extract version from tag (v1.2.3 -> 1.2.3)
+                VERSION=${BUILD_SOURCEBRANCH#refs/tags/v}
+                echo "Tagging version: $VERSION"
+                
+                # Pull the build image
+                docker pull $(containerRegistry)/$(imageName):$(Build.BuildId)
+                
+                # Tag with version
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$VERSION
+                
+                # Tag major.minor (e.g., 1.2)
+                MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$MAJOR_MINOR
+                
+                # Tag major (e.g., 1)
+                MAJOR=$(echo $VERSION | cut -d. -f1)
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$MAJOR
+                
+                # Push all tags
+                docker push $(containerRegistry)/$(imageName):$VERSION
+                docker push $(containerRegistry)/$(imageName):$MAJOR_MINOR
+                docker push $(containerRegistry)/$(imageName):$MAJOR

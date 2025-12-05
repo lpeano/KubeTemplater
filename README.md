@@ -2,48 +2,89 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/ariellpe/KubeTemplater)](https://goreportcard.com/report/github.com/ariellpe/KubeTemplater) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![GitHub release (latest by date)](https://img.shields.io/github/v/release/ariellpe/KubeTemplater)](https://github.com/ariellpe/KubeTemplater/releases) [![Built with Go](https://img.shields.io/badge/Built%20with-Go-1976D2.svg)](https://go.dev/) [![Powered by Kubernetes](https://img.shields.io/badge/Powered%20by-Kubernetes-326CE5.svg)](https://kubernetes.io/) [![Built with Kubebuilder](https://img.shields.io/badge/Built%20with-Kubebuilder-8B572A.svg)](https://book.kubebuilder.io/) [![Community](https://img.shields.io/badge/Community-Join%20Us-blueviolet)](https://github.com/ariellpe/KubeTemplater/issues) [![Documentation](https://img.shields.io/badge/Documentation-Read%20the%20Docs-blue)](https://github.com/ariellpe/KubeTemplater/blob/main/README.md) [![CI](https://github.com/ariellpe/KubeTemplater/actions/workflows/test.yml/badge.svg)](https://github.com/ariellpe/KubeTemplater/actions/workflows/test.yml) [![CD](https://github.com/ariellpe/KubeTemplater/actions/workflows/release.yml/badge.svg)](https://github.com/ariellpe/KubeTemplater/actions/workflows/release.yml) [![Code Quality](https://img.shields.io/badge/Code%20Quality-A%2B-yellowgreen)](https://goreportcard.com/report/github.com/ariellpe/KubeTemplater) [![Sponsors](https://img.shields.io/badge/Sponsors-Donate-df4aaa.svg)](https://github.com/sponsors/ariellpe) [![Changelog](https://img.shields.io/badge/Changelog-Read%20Me-green)](CHANGELOG.md) [![Website](https://img.shields.io/badge/Website-Visit%20Us-orange)](https://github.com/ariellpe/KubeTemplater) [![Get Started](https://img.shields.io/badge/Get%20Started-Now-ff69b4)](https://github.com/ariellpe/KubeTemplater#getting-started) [![YouTube](https://img.shields.io/badge/YouTube-Watch%20Now-red)](https://www.youtube.com/channel/UC59g-n32gC94i6Ew_fC6ZOA) [![Twitter](https://img.shields.io/twitter/follow/ariellpe.svg?style=social)](https://twitter.com/ariellpe) [![Twitter](https://img.shields.io/twitter/follow/ariellpe.svg?style=social)](https://twitter.com/ariellpe)
 
-**KubeTemplater** is a lightweight Kubernetes operator that dynamically renders and applies Kubernetes resources using Go templates defined within your `ConfigMap`s.
+**KubeTemplater** is a lightweight Kubernetes operator that manages Kubernetes resources through custom resources with built-in policy enforcement.
 
-It allows you to manage the state of multiple resources from a single configuration file, acting as a config-driven resource generator.
+It allows you to define multiple Kubernetes resources in a single `KubeTemplate` custom resource, with validation and security controls provided by `KubeTemplatePolicy`.
+
+---
+
+## ✨ What's New in v0.2.0
+
+**Field-Level Validation** - Granular control over resource fields with five validation types:
+- **CEL**: Complex expressions for custom logic
+- **Regex**: Pattern matching for strings (image tags, labels, etc.)
+- **Range**: Numeric validation (replicas, ports, resource limits)
+- **Required**: Enforce mandatory security fields
+- **Forbidden**: Prevent dangerous configurations
+
+Example:
+```yaml
+fieldValidations:
+  - fieldPath: spec.replicas
+    validationType: Range
+    minValue: 1
+    maxValue: 10
+  - fieldPath: spec.template.spec.containers[0].image
+    validationType: Regex
+    regexPattern: "^(nginx|redis):"
+```
+
+See [Features Documentation](docs/features.md) for complete details.
 
 ---
 
 ## 🚀 How it Works
 
-KubeTemplater follows a simple reconciliation loop:
+KubeTemplater follows a policy-driven reconciliation loop:
 
-1.  **Watch:** It monitors all `ConfigMap` resources across the cluster.
-2.  **Filter:** It only processes `ConfigMap`s that have the specific annotation: `kubetemplater.io: "true"`.
-3.  **Read:** It parses a YAML array located in the `data["resources.yaml"]` key of the annotated `ConfigMap`.
-4.  **Render:** For each item in the array, it renders the Go template (`template: ...`) using the provided list of `values: ...`.
-5.  **Apply:** It applies the final rendered manifest to the cluster using a **Server-Side Apply (SSA)**. This ensures that the resource is only updated if the rendered template differs from the live state, or if the resource does not exist.
+1.  **Watch:** It monitors `KubeTemplate` custom resources across the cluster.
+2.  **Validate:** The admission webhook validates each `KubeTemplate` against the corresponding `KubeTemplatePolicy` before acceptance.
+3.  **Policy Check:** The controller verifies that a matching policy exists for the source namespace.
+4.  **Resource Validation:** Each resource in the template is validated against policy rules (GVK, target namespaces, CEL expressions).
+5.  **Apply:** It applies each valid resource to the cluster using **Server-Side Apply (SSA)**, ensuring declarative and conflict-free updates.
 
 ---
 
 ## Configuration Example
 
-To instruct KubeTemplater to create resources, you apply a `ConfigMap` structured like this:
+First, create a `KubeTemplatePolicy` to define what resources can be created:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplatePolicy
+metadata:
+  name: default-policy
+  namespace: kubetemplater-system  # Operator namespace
+spec:
+  sourceNamespace: default  # Namespace where KubeTemplates can be created
+  validationRules:
+    - kind: Deployment
+      group: apps
+      version: v1
+      targetNamespaces: [default]
+    - kind: Service
+      group: ""
+      version: v1
+      targetNamespaces: [default]
+```
+
+Then, create a `KubeTemplate` to define your resources:
+
+```yaml
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplate
 metadata:
   name: my-app-template
   namespace: default
-  annotations:
-    # The annotation that activates the operator
-    kubetemplater.io: "true"
-data:
-  # The data key containing the list of resources to render
-  resources.yaml: |
-    - name: my-nginx-deployment
-      template: |
+spec:
+  templates:
+    - object:
         apiVersion: apps/v1
         kind: Deployment
         metadata:
-          name: {{ .deployName }}
+          name: my-nginx-deployment
         spec:
-          replicas: {{ .replicas }}
+          replicas: 3
           selector:
             matchLabels:
               app: nginx
@@ -54,15 +95,9 @@ data:
             spec:
               containers:
               - name: nginx
-                image: "nginx:1.21.0"
-      values:
-        - name: deployName
-          value: "my-nginx-deployment"
-        - name: replicas
-          value: "3"
-
-    - name: my-nginx-service
-      template: |
+                image: nginx:1.21.0
+    
+    - object:
         apiVersion: v1
         kind: Service
         metadata:
@@ -72,8 +107,30 @@ data:
             app: nginx
           ports:
             - port: 80
-      values: []
+              targetPort: 80
 ```
+
+---
+
+## 🔒 Security & Validation
+
+KubeTemplater implements a **multi-layered security model**:
+
+### Validation Webhook
+- **Admission-time validation** of all KubeTemplate resources
+- Rejects invalid configurations before they reach the cluster
+- Validates against KubeTemplatePolicy rules with CEL expressions
+- **Field-level validations** (v0.2.0+): Validate specific resource fields using CEL, Regex, Range, Required, and Forbidden rules
+- Provides immediate feedback to users
+
+### Policy Enforcement
+- **KubeTemplatePolicy** CRD defines what resources can be created
+- **Namespace isolation**: Policies control which namespaces can create which resources
+- **CEL expressions**: Custom validation rules using Common Expression Language
+- **Field validations**: Granular control over resource fields (replicas, images, security settings, etc.)
+- **Resource type restrictions**: Whitelist allowed Kubernetes resource types
+
+For detailed information, see [Webhook Validation Documentation](docs/webhook-validation.md).
 
 ---
 
@@ -87,19 +144,43 @@ data:
 
 ### Installation with Helm
 
-You can install KubeTemplater using the provided Helm chart.
+**Recommended installation method** using the provided Helm chart.
 
-To install the chart from the `charts/kubetemplater` directory, run the following command:
+**Current Chart Version**: `0.2.0`
+
+To install the chart from the `charts/kubetemplater` directory:
 
 ```sh
-helm install kubetemplater ./charts/kubetemplater --namespace kubetemplater-system --create-namespace
+helm install kubetemplater ./charts/kubetemplater \
+  --namespace kubetemplater-system \
+  --create-namespace
 ```
+
+This will install:
+- Custom Resource Definitions (CRDs) with field validation support
+- Validating webhook for policy enforcement
+- Controller manager with RBAC permissions
+- Metrics endpoints
 
 You can customize the installation by providing your own `values.yaml` file:
 
 ```sh
-helm install kubetemplater ./charts/kubetemplater --namespace kubetemplater-system --create-namespace -f my-values.yaml
+helm install kubetemplater ./charts/kubetemplater \
+  --namespace kubetemplater-system \
+  --create-namespace \
+  -f my-values.yaml
 ```
+
+**Verify installation:**
+```sh
+kubectl get pods -n kubetemplater-system
+kubectl get validatingwebhookconfigurations
+```
+
+**Cloud Provider Installation Guides:**
+- **[Azure AKS](docs/aks-installation.md)** - Native webhook certificate management (recommended for AKS)
+- **[Google GKE](docs/gke-installation.md)** - Native webhook certificate management (recommended for GKE)  
+- **[Amazon EKS](docs/eks-installation.md)** - cert-manager configuration (required for EKS)
 
 ### Installation from source
 **Build and push your image to the location specified by `IMG`:**

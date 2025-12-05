@@ -5,11 +5,12 @@
 domain: my.company.com
 layout:
 - go.kubebuilder.io/v4
+multigroup: true
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: kubetemplater
-repo: github.com/tuo-utente/kube-templater
+repo: github.com/lpeano/KubeTemplater
 resources:
 - controller: true
   core: true
@@ -17,4 +18,20 @@ resources:
   kind: ConfigMap
   path: k8s.io/api/core/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: my.company.com
+  group: kubetemplater.io
+  kind: KubeTemplate
+  path: github.com/lpeano/KubeTemplater/api/kubetemplater.io/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+  domain: my.company.com
+  group: kubetemplater.io
+  kind: KubeTemplatePolicy
+  path: github.com/lpeano/KubeTemplater/api/kubetemplater.io/v1alpha1
+  version: v1alpha1
 version: "3"
