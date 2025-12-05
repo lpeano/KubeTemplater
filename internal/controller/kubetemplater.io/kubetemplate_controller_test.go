@@ -34,18 +34,48 @@ import (
 var _ = Describe("KubeTemplate Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const policyName = "test-policy"
+		const operatorNamespace = "default" // In real deployment it would be kubetemplater-system
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
+		}
+		policyNamespacedName := types.NamespacedName{
+			Name:      policyName,
+			Namespace: operatorNamespace,
 		}
 		kubetemplate := &kubetemplateriov1alpha1.KubeTemplate{}
 
 		BeforeEach(func() {
+			By("creating a KubeTemplatePolicy for the source namespace")
+			policy := &kubetemplateriov1alpha1.KubeTemplatePolicy{}
+			err := k8sClient.Get(ctx, policyNamespacedName, policy)
+			if err != nil && errors.IsNotFound(err) {
+				policy = &kubetemplateriov1alpha1.KubeTemplatePolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      policyName,
+						Namespace: operatorNamespace,
+					},
+					Spec: kubetemplateriov1alpha1.KubeTemplatePolicySpec{
+						SourceNamespace: "default",
+						ValidationRules: []kubetemplateriov1alpha1.ValidationRule{
+							{
+								Kind:             "ConfigMap",
+								Group:            "",
+								Version:          "v1",
+								TargetNamespaces: []string{"default"},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+			}
+
 			By("creating the custom resource for the Kind KubeTemplate")
-			err := k8sClient.Get(ctx, typeNamespacedName, kubetemplate)
+			err = k8sClient.Get(ctx, typeNamespacedName, kubetemplate)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &kubetemplateriov1alpha1.KubeTemplate{
 					ObjectMeta: metav1.ObjectMeta{
@@ -60,7 +90,8 @@ var _ = Describe("KubeTemplate Controller", func() {
   "apiVersion": "v1",
   "kind": "ConfigMap",
   "metadata": {
-    "name": "test-cm"
+    "name": "test-cm",
+    "namespace": "default"
   },
   "data": {
     "key": "value"
@@ -76,13 +107,19 @@ var _ = Describe("KubeTemplate Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
+			By("Cleanup the specific resource instance KubeTemplate")
 			resource := &kubetemplateriov1alpha1.KubeTemplate{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
 
-			By("Cleanup the specific resource instance KubeTemplate")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			By("Cleanup the KubeTemplatePolicy")
+			policy := &kubetemplateriov1alpha1.KubeTemplatePolicy{}
+			err = k8sClient.Get(ctx, policyNamespacedName, policy)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, policy)).To(Succeed())
+			}
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
