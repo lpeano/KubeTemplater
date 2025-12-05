@@ -1,9 +1,5 @@
 module github.com/lpeano/KubeTemplater
-
-go 1.24.0
-
-toolchain go1.24.3
-
+go 1.23
 require (
 	github.com/google/cel-go v0.26.1
 	github.com/onsi/ginkgo/v2 v2.22.0
@@ -14,7 +10,6 @@ require (
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.4.0
 )
-
 require (
 	cel.dev/expr v0.24.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
