@@ -1,5 +1,6 @@
 module github.com/lpeano/KubeTemplater
-go 1.23
+
+go 1.24.0
 require (
 	github.com/google/cel-go v0.26.1
 	github.com/onsi/ginkgo/v2 v2.22.0
