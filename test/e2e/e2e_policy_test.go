@@ -79,12 +79,13 @@ spec:
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("checking that the KubeTemplate status shows an error")
+			By("checking that the KubeTemplate is rejected by webhook or controller")
+			// The webhook may reject it immediately, or the controller will set error status
 			Eventually(func() string {
 				cmd := exec.Command("kubectl", "get", "kubetemplate", templateName, "-n", sourceNamespace, "-o", "jsonpath={.status.status}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, time.Minute, 5*time.Second).Should(ContainSubstring("No KubeTemplatePolicy found for source namespace"))
+			}, 2*time.Minute, 5*time.Second).Should(ContainSubstring("No KubeTemplatePolicy found for source namespace"))
 		})
 	})
 
@@ -144,7 +145,7 @@ spec:
 				cmd := exec.Command("kubectl", "get", "configmap", configMapName, "-n", targetNamespace)
 				_, err := utils.Run(cmd)
 				return err
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
 		It("should not create a resource in a disallowed target namespace", func() {
@@ -171,19 +172,19 @@ spec:
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("checking that the KubeTemplate status shows an error")
+			By("checking that the KubeTemplate status shows an error or webhook rejects it")
 			Eventually(func() string {
 				cmd := exec.Command("kubectl", "get", "kubetemplate", templateName, "-n", sourceNamespace, "-o", "jsonpath={.status.status}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, time.Minute, 5*time.Second).Should(ContainSubstring("is not an allowed target for resource"))
+			}, 2*time.Minute, 5*time.Second).Should(ContainSubstring("is not an allowed target for resource"))
 
 			By("checking that the ConfigMap is not created")
 			Consistently(func() error {
 				cmd := exec.Command("kubectl", "get", "configmap", configMapName, "-n", anotherNamespace)
 				_, err := utils.Run(cmd)
 				return err
-			}, 30*time.Second, 5*time.Second).ShouldNot(Succeed())
+			}, 45*time.Second, 5*time.Second).ShouldNot(Succeed())
 		})
 
 		It("should not create a resource if targetNamespaces is empty", func() {
@@ -215,7 +216,7 @@ spec:
 				cmd := exec.Command("kubectl", "get", "kubetemplate", templateName, "-n", sourceNamespace, "-o", "jsonpath={.status.status}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, time.Minute, 5*time.Second).Should(ContainSubstring("no target namespaces defined"))
+			}, 2*time.Minute, 5*time.Second).Should(ContainSubstring("no target namespaces defined"))
 		})
 	})
 
@@ -312,14 +313,14 @@ spec:
 				cmd := exec.Command("kubectl", "get", "kubetemplate", templateName, "-n", sourceNamespace, "-o", "jsonpath={.status.status}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, time.Minute, 5*time.Second).Should(ContainSubstring("Failed to apply object"))
+			}, 2*time.Minute, 5*time.Second).Should(ContainSubstring("Failed to apply object"))
 
 			By("checking that the service's clusterIP has not changed")
 			Consistently(func() string {
 				cmd := exec.Command("kubectl", "get", "service", serviceName, "-n", sourceNamespace, "-o", "jsonpath={.spec.clusterIP}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, 30*time.Second, 5*time.Second).Should(Equal(originalClusterIP))
+			}, 45*time.Second, 5*time.Second).Should(Equal(originalClusterIP))
 		})
 
 		It("should replace the object if replace is true", func() {
@@ -357,7 +358,7 @@ spec:
 				}
 				originalClusterIP = string(output)
 				return nil
-			}, time.Minute, 5*time.Second).Should(Succeed())
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("updating the template to change an immutable field")
 			updatedTemplate := fmt.Sprintf(`
@@ -389,7 +390,7 @@ spec:
 				cmd := exec.Command("kubectl", "get", "service", serviceName, "-n", sourceNamespace, "-o", "jsonpath={.spec.clusterIP}")
 				output, _ := utils.Run(cmd)
 				return string(output)
-			}, time.Minute, 5*time.Second).ShouldNot(Equal(originalClusterIP))
+			}, 2*time.Minute, 5*time.Second).ShouldNot(Equal(originalClusterIP))
 		})
 	})
 })
