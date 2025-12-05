@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 
@@ -37,12 +38,22 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+const (
+	// MaxTemplatesPerKubeTemplate limits the number of templates in a single KubeTemplate
+	maxTemplatesPerKubeTemplate = 50
+	// MaxTemplateSizeBytes limits the size of each template object (1MB)
+	maxTemplateSizeBytes = 1 * 1024 * 1024
+	// CELEvaluationTimeout is the maximum time allowed for CEL evaluation
+	celEvaluationTimeout = 100 * time.Millisecond
+)
+
 // +kubebuilder:webhook:path=/validate-kubetemplater-io-v1alpha1-kubetemplate,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubetemplater.io,resources=kubetemplates,verbs=create;update,versions=v1alpha1,name=vkubetemplate.kb.io,admissionReviewVersions=v1
 
 // KubeTemplateValidator validates KubeTemplate resources
 type KubeTemplateValidator struct {
 	Client            client.Client
 	OperatorNamespace string
+	regexCache        map[string]*regexp.Regexp
 }
 
 var _ webhook.CustomValidator = &KubeTemplateValidator{}
@@ -116,8 +127,17 @@ func (v *KubeTemplateValidator) validateKubeTemplate(ctx context.Context, kubeTe
 
 	var warnings admission.Warnings
 
+	// Validate template count limit
+	if len(kubeTemplate.Spec.Templates) > maxTemplatesPerKubeTemplate {
+		return warnings, fmt.Errorf("too many templates: %d (max allowed: %d)", len(kubeTemplate.Spec.Templates), maxTemplatesPerKubeTemplate)
+	}
+
 	// Validate each template in the KubeTemplate
 	for idx, template := range kubeTemplate.Spec.Templates {
+		// Validate template size
+		if len(template.Object.Raw) > maxTemplateSizeBytes {
+			return warnings, fmt.Errorf("template[%d]: size %d bytes exceeds maximum allowed size of %d bytes", idx, len(template.Object.Raw), maxTemplateSizeBytes)
+		}
 		// Unmarshal the template object
 		var obj unstructured.Unstructured
 		if err := yaml.Unmarshal(template.Object.Raw, &obj); err != nil {
@@ -270,11 +290,22 @@ func (v *KubeTemplateValidator) validateFieldRegex(validation kubetemplateriov1a
 		return fmt.Errorf("template[%d]: fieldValidation (%s): field %s not found", templateIdx, validation.Name, validation.FieldPath)
 	}
 
-	// Compile and match regex
-	matched, err := regexp.MatchString(validation.Regex, fieldValue)
-	if err != nil {
-		return fmt.Errorf("template[%d]: fieldValidation (%s): invalid regex pattern %s: %w", templateIdx, validation.Name, validation.Regex, err)
+	// Get or compile regex pattern (with caching)
+	if v.regexCache == nil {
+		v.regexCache = make(map[string]*regexp.Regexp)
 	}
+	
+	re, exists := v.regexCache[validation.Regex]
+	if !exists {
+		re, err = regexp.Compile(validation.Regex)
+		if err != nil {
+			return fmt.Errorf("template[%d]: fieldValidation (%s): invalid regex pattern %s: %w", templateIdx, validation.Name, validation.Regex, err)
+		}
+		v.regexCache[validation.Regex] = re
+	}
+
+	// Match regex
+	matched := re.MatchString(fieldValue)
 
 	if !matched {
 		if validation.Message != "" {
@@ -391,11 +422,12 @@ func (v *KubeTemplateValidator) validateCELRule(rule string, obj *unstructured.U
 		}
 	}
 
-	// Create CEL environment
+	// Create CEL environment with cost limit
 	env, err := cel.NewEnv(
 		cel.Declarations(
 			decls.NewVar(varName, varType),
 		),
+		cel.CostLimit(1000000), // Limit to 1M cost units
 	)
 	if err != nil {
 		errPrefix := fmt.Sprintf("template[%d]", templateIdx)
@@ -425,8 +457,8 @@ func (v *KubeTemplateValidator) validateCELRule(rule string, obj *unstructured.U
 		return fmt.Errorf("%s: failed to check CEL rule: %w", errPrefix, issues.Err())
 	}
 
-	// Create CEL program
-	prg, err := env.Program(checked)
+	// Create CEL program with cost tracking
+	prg, err := env.Program(checked, cel.CostTracking(nil))
 	if err != nil {
 		errPrefix := fmt.Sprintf("template[%d]", templateIdx)
 		if validationName != "" {
@@ -435,8 +467,11 @@ func (v *KubeTemplateValidator) validateCELRule(rule string, obj *unstructured.U
 		return fmt.Errorf("%s: failed to create CEL program: %w", errPrefix, err)
 	}
 
-	// Evaluate the CEL rule
-	out, _, err := prg.Eval(map[string]interface{}{
+	// Evaluate the CEL rule with timeout
+	evalCtx, cancel := context.WithTimeout(context.Background(), celEvaluationTimeout)
+	defer cancel()
+
+	out, _, err := prg.ContextEval(evalCtx, map[string]interface{}{
 		varName: varValue,
 	})
 	if err != nil {
