@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -54,15 +55,18 @@ var _ = Describe("KubeTemplate Controller", func() {
 					Spec: kubetemplateriov1alpha1.KubeTemplateSpec{
 						Templates: []kubetemplateriov1alpha1.Template{
 							{
-								Name: "test-configmap",
-								Template: `
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: test-cm
-data:
-  key: value
-`,
+								Object: runtime.RawExtension{
+									Raw: []byte(`{
+  "apiVersion": "v1",
+  "kind": "ConfigMap",
+  "metadata": {
+    "name": "test-cm"
+  },
+  "data": {
+    "key": "value"
+  }
+}`),
+								},
 							},
 						},
 					},
