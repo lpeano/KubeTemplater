@@ -51,7 +51,21 @@ var _ = Describe("KubeTemplate Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: kubetemplateriov1alpha1.KubeTemplateSpec{
+						Templates: []kubetemplateriov1alpha1.Template{
+							{
+								Name: "test-configmap",
+								Template: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-cm
+data:
+  key: value
+`,
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
