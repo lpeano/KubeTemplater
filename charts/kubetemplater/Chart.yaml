@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kubetemplater
+description: A Helm chart for KubeTemplater - Policy-driven Kubernetes resource management with validation webhook
+type: application
+version: 0.5.2
+appVersion: "v0.5.2"

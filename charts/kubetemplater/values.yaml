@@ -1,0 +1,100 @@
+# KubeTemplater Controller values
+#
+# NOTE: The controller supports a special annotation on the resources it manages:
+#
+#   kubetemplater.io/replace-enabled: "true"
+#
+# When this annotation is present on a resource (like a Deployment), the controller
+# will perform a "replace" (delete and re-create) operation if an update fails
+# due to an immutable field change.
+
+replicaCount: 3
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v0.5.2"
+
+
+podAnnotations: {}
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "kubetemplater"
+
+# Webhook configuration
+webhook:
+  # Enable or disable the validating webhook
+  enabled: true
+  
+  # Certificate management mode
+  # - "self-signed": Automatically generate and manage self-signed certificates
+  #   (Leader pod generates/renews certificates, stores in Secret)
+  #   (Recommended for most installations - no dependencies)
+  # - "cloud-native": Use cloud provider's native certificate management
+  #   (Works for GKE - auto-injects certificates, NOT supported on AKS/EKS)
+  # - "cert-manager": Use cert-manager for certificate management
+  #   (Requires cert-manager installed in cluster)
+  # - "manual": Provide your own certificates
+  #   (For air-gapped, corporate PKI, or custom setups)
+  certificateMode: "self-signed"
+  
+  # cert-manager configuration (only used when certificateMode=cert-manager)
+  certManager:
+    # Issuer name (leave empty to use self-signed issuer created by chart)
+    issuerName: ""
+    # Issuer kind (Issuer or ClusterIssuer)
+    issuerKind: "Issuer"
+  
+  # Manual certificate configuration (only used when certificateMode=manual)
+  # Provide base64-encoded PEM certificate and key
+  certificate:
+    caBundle: ""
+    tlsCert: ""
+    tlsKey: ""
+  
+  # Webhook service configuration
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Webhook failure policy (Fail or Ignore)
+  # Fail: Reject requests if webhook is unavailable (recommended)
+  # Ignore: Allow requests if webhook is unavailable
+  failurePolicy: Fail
+  
+  # Webhook timeout in seconds
+  timeoutSeconds: 10
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 2000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Tolerations to run on any node
+tolerations:
+  - operator: Exists
+
+# Pod anti-affinity to spread across nodes for HA
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kubetemplater
+          topologyKey: kubernetes.io/hostname
