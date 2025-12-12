@@ -1,0 +1,187 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: kubetemplatepolicies.kubetemplater.io
+spec:
+  group: kubetemplater.io
+  names:
+    kind: KubeTemplatePolicy
+    listKind: KubeTemplatePolicyList
+    plural: kubetemplatepolicies
+    singular: kubetemplatepolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.sourceNamespace
+      name: Source NS
+      type: string
+    - jsonPath: .status.active
+      name: Active
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.templatesUsing
+      name: Templates
+      priority: 1
+      type: integer
+    - jsonPath: .status.validationSuccesses
+      name: Successes
+      priority: 1
+      type: integer
+    - jsonPath: .status.validationFailures
+      name: Failures
+      priority: 1
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KubeTemplatePolicy is the Schema for the kubetemplatepolicies
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KubeTemplatePolicySpec defines the desired state of KubeTemplatePolicy.
+            properties:
+              sourceNamespace:
+                description: SourceNamespace is the namespace where KubeTemplates
+                  are allowed to use this policy.
+                type: string
+              validationRules:
+                items:
+                  description: ValidationRule defines the policy for creating a specific
+                    kind of resource.
+                  properties:
+                    fieldValidations:
+                      description: |-
+                        FieldValidations defines multiple validation rules for specific fields.
+                        Each validation is evaluated independently and all must pass.
+                      items:
+                        description: FieldValidation defines validation rules for
+                          a specific field in a resource.
+                        properties:
+                          cel:
+                            description: |-
+                              CEL is a CEL expression evaluated against the field value.
+                              The variable name depends on FieldPath:
+                              - For specific fields: 'value' contains the field value
+                              - For empty FieldPath: 'object' contains the entire resource
+                              Example: "value.startsWith('prod-')" or "object.spec.replicas <= 10"
+                            type: string
+                          fieldPath:
+                            description: |-
+                              FieldPath is the JSON path to the field to validate (e.g., "metadata.name", "spec.replicas").
+                              Use dot notation for nested fields. For object-level validation, use empty string or "object".
+                            type: string
+                          max:
+                            format: int64
+                            type: integer
+                          message:
+                            description: Message is a custom error message to display
+                              when validation fails.
+                            type: string
+                          min:
+                            description: |-
+                              Min and Max define the allowed range for numeric fields.
+                              Only valid when Type is "range".
+                            format: int64
+                            type: integer
+                          name:
+                            description: Name is a human-readable name for this validation
+                              (for error messages).
+                            type: string
+                          regex:
+                            description: |-
+                              Regex is a regular expression pattern that the field value must match.
+                              Only valid when Type is "regex".
+                            type: string
+                          required:
+                            description: |-
+                              Required specifies that the field must exist and be non-empty.
+                              Only valid when Type is "required".
+                            type: boolean
+                          type:
+                            description: |-
+                              Type defines the type of validation to perform.
+                              Valid values: "cel", "regex", "range", "required", "forbidden"
+                            enum:
+                            - cel
+                            - regex
+                            - range
+                            - required
+                            - forbidden
+                            type: string
+                        required:
+                        - name
+                        - type
+                        type: object
+                      type: array
+                    group:
+                      type: string
+                    kind:
+                      type: string
+                    rule:
+                      description: |-
+                        Rule is a CEL expression that validates the entire object.
+                        DEPRECATED: Use FieldValidations for more granular control.
+                        This field is kept for backward compatibility.
+                      type: string
+                    targetNamespaces:
+                      description: |-
+                        TargetNamespaces is a list of namespaces where resources of this kind are allowed to be created.
+                        If empty, resources of this kind cannot be created in any namespace.
+                      items:
+                        type: string
+                      type: array
+                    version:
+                      type: string
+                  required:
+                  - group
+                  - kind
+                  - targetNamespaces
+                  - version
+                  type: object
+                type: array
+            required:
+            - sourceNamespace
+            - validationRules
+            type: object
+          status:
+            description: KubeTemplatePolicyStatus defines the observed state of KubeTemplatePolicy.
+            properties:
+              active:
+                type: boolean
+              lastValidationTime:
+                format: date-time
+                type: string
+              templatesUsing:
+                type: integer
+              validationFailures:
+                type: integer
+              validationSuccesses:
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

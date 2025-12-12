@@ -1,0 +1,44 @@
+{{- if .Values.webhook.enabled }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "kubetemplater.fullname" . }}-validating-webhook-configuration
+  labels:
+    {{- include "kubetemplater.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep-on-delete
+  {{- if eq .Values.webhook.certificateMode "cert-manager" }}
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kubetemplater.fullname" . }}-serving-cert
+  {{- end }}
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    {{- if eq .Values.webhook.certificateMode "manual" }}
+    {{- if .Values.webhook.certificate.caBundle }}
+    caBundle: {{ .Values.webhook.certificate.caBundle }}
+    {{- end }}
+    {{- end }}
+    {{- /* For cloud-native mode (AKS/GKE), omit caBundle to let cloud provider inject it automatically */}}
+    service:
+      name: {{ include "kubetemplater.fullname" . }}-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /validate-kubetemplater-io-v1alpha1-kubetemplate
+  failurePolicy: {{ .Values.webhook.failurePolicy }}
+  name: vkubetemplate.kb.io
+  rules:
+  - apiGroups:
+    - kubetemplater.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - kubetemplates
+  sideEffects: None
+  {{- if .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+  {{- end }}
+{{- end }}

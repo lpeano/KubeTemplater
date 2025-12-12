@@ -1,0 +1,69 @@
+apiVersion: kubetemplater.io/v1alpha1
+kind: KubeTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: kubetemplater
+    app.kubernetes.io/managed-by: kustomize
+  name: kubetemplate-sample
+  namespace: default
+spec:
+  templates:
+    # Example 1: A simple ConfigMap
+    - object:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: sample-configmap
+          namespace: default
+        data:
+          config.yaml: |
+            setting1: value1
+            setting2: value2
+
+    # Example 2: A Deployment
+    - object:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: sample-app
+          namespace: default
+          labels:
+            app: sample-app
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: sample-app
+          template:
+            metadata:
+              labels:
+                app: sample-app
+            spec:
+              containers:
+              - name: nginx
+                image: nginx:1.23
+                ports:
+                - containerPort: 80
+
+    # Example 3: A CronJob with replace mode enabled for immutable fields
+    - replace: true
+      object:
+        apiVersion: batch/v1
+        kind: CronJob
+        metadata:
+          name: sample-cronjob
+          namespace: default
+        spec:
+          schedule: "*/5 * * * *"
+          jobTemplate:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: hello
+                    image: busybox:1.35
+                    command:
+                    - /bin/sh
+                    - -c
+                    - date; echo "Hello from KubeTemplater!"
+                  restartPolicy: OnFailure

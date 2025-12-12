@@ -1,0 +1,520 @@
+trigger:
+  branches:
+    include: []  # Disabled - only build on tags
+  tags:
+    include:
+      - v*.*.*
+
+pr:
+  branches:
+    include:
+      - main
+
+parameters:
+  - name: enableTrivyScan
+    displayName: 'Run Trivy Filesystem Scan'
+    type: boolean
+    default: false
+  
+  - name: failOnTrivyScan
+    displayName: 'Fail Pipeline on Trivy Filesystem Vulnerabilities'
+    type: boolean
+    default: false
+  
+  - name: enableGoSecScan
+    displayName: 'Run GoSec Security Scan'
+    type: boolean
+    default: true
+  
+  - name: enableGolangCILint
+    displayName: 'Run GolangCI-Lint'
+    type: boolean
+    default: false  # Temporarily disabled: golangci-lint not yet available for Go 1.24
+  
+  - name: enableImageScan
+    displayName: 'Run Docker Image Security Scan'
+    type: boolean
+    default: true
+  
+  - name: failOnImageScan
+    displayName: 'Fail Pipeline on Docker Image Vulnerabilities'
+    type: boolean
+    default: false
+  
+  - name: manualTag
+    displayName: 'Force Push to Manual Tag (bypasses all checks, e.g., v0.3.3)'
+    type: string
+    default: ''
+
+variables:
+  imageName: 'kubetemplater'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  acrServiceConnection: 'your-acr-connection'
+  azureServiceConnection: 'your-azure-connection'
+  containerRegistry: 'your-registry.azurecr.io'
+
+stages:
+  # ===== STAGE 1: Trivy Filesystem Scan =====
+  - stage: TrivyScan
+    displayName: 'Trivy Filesystem Scan'
+    condition: eq('${{ parameters.enableTrivyScan }}', true)
+    jobs:
+      - job: ScanFilesystem
+        displayName: 'Scan Dependencies & Source'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: Bash@3
+            displayName: 'Install Trivy'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Installing Trivy..."
+                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+                echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+                sudo apt-get update
+                sudo apt-get install trivy -y
+                echo "✅ Trivy installed"
+
+          - task: Bash@3
+            displayName: 'Run Trivy Filesystem Scan'
+            continueOnError: ${{ eq(parameters.failOnTrivyScan, false) }}
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Scanning Go dependencies and source code..."
+                trivy fs --severity HIGH,CRITICAL \
+                  --format sarif \
+                  --output $(Build.SourcesDirectory)/trivy-fs-results.sarif \
+                  .
+                
+                echo "=== Scan Results ==="
+                trivy fs --severity HIGH,CRITICAL .
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish SARIF Results'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/trivy-fs-results.sarif'
+              ArtifactName: 'trivy-filesystem-sarif'
+              publishLocation: 'Container'
+
+  # ===== STAGE 2: GoSec Security Scan =====
+  - stage: GoSecScan
+    displayName: 'GoSec Security Analysis'
+    condition: eq('${{ parameters.enableGoSecScan }}', true)
+    jobs:
+      - job: RunGoSec
+        displayName: 'Static Security Analysis'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: GoTool@0
+            displayName: 'Install Go'
+            inputs:
+              version: '1.23.4'
+
+          - task: Bash@3
+            displayName: 'Install GoSec'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Installing GoSec..."
+                go install github.com/securego/gosec/v2/cmd/gosec@latest
+                export PATH=$PATH:$(go env GOPATH)/bin
+                echo "✅ GoSec installed"
+
+          - task: Bash@3
+            displayName: 'Run GoSec Scan'
+            inputs:
+              targetType: 'inline'
+              script: |
+                export PATH=$PATH:$(go env GOPATH)/bin
+                
+                echo "Running GoSec security scanner..."
+                gosec -version
+                
+                # Generate SARIF output
+                gosec -fmt=sarif -out=$(Build.SourcesDirectory)/gosec-results.sarif ./...
+                
+                echo "=== GoSec Results ==="
+                gosec -fmt=text ./...
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish SARIF Results'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/gosec-results.sarif'
+              ArtifactName: 'gosec-sarif'
+              publishLocation: 'Container'
+
+  # ===== STAGE 3: GolangCI-Lint =====
+  - stage: GolangCILint
+    displayName: 'GolangCI-Lint Analysis'
+    condition: eq('${{ parameters.enableGolangCILint }}', true)
+    jobs:
+      - job: RunLinter
+        displayName: 'Code Quality & Security'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: GoTool@0
+            displayName: 'Install Go'
+            inputs:
+              version: '1.24.3'
+
+          - task: Bash@3
+            displayName: 'Install golangci-lint'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Installing golangci-lint..."
+                curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.63.4
+                export PATH=$PATH:$(go env GOPATH)/bin
+                echo "✅ golangci-lint installed"
+
+          - task: Bash@3
+            displayName: 'Run golangci-lint'
+            inputs:
+              targetType: 'inline'
+              script: |
+                export PATH=$PATH:$(go env GOPATH)/bin
+                
+                echo "Running golangci-lint..."
+                golangci-lint --version
+                
+                # Console output
+                golangci-lint run \
+                  --out-format=colored-line-number \
+                  --issues-exit-code=0 \
+                  ./...
+                
+                # Generate SARIF (redirect output to file)
+                golangci-lint run \
+                  --out-format=sarif \
+                  --issues-exit-code=0 \
+                  ./... > $(Build.SourcesDirectory)/golangci-lint-results.sarif
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish SARIF Results'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/golangci-lint-results.sarif'
+              ArtifactName: 'golangci-lint-sarif'
+              publishLocation: 'Container'
+
+  # ===== STAGE 4: Build Docker Image =====
+  - stage: Build
+    displayName: 'Build Docker Image'
+    dependsOn:
+      - TrivyScan
+      - GoSecScan
+      - GolangCILint
+    condition: |
+      or(
+        ne('${{ parameters.manualTag }}', ''),
+        and(
+          in(dependencies.TrivyScan.result, 'Succeeded', 'Skipped'),
+          in(dependencies.GoSecScan.result, 'Succeeded', 'Skipped'),
+          in(dependencies.GolangCILint.result, 'Succeeded', 'Skipped')
+        )
+      )
+    jobs:
+      - job: BuildImage
+        displayName: 'Build and Push to ACR'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: GoTool@0
+            displayName: 'Install Go'
+            inputs:
+              version: '1.23.4'
+
+          - task: AzureCLI@2
+            displayName: 'Add Pipeline IP to ACR Firewall'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                echo "Pipeline IP: $PIPELINE_IP"
+                az acr network-rule add --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                echo "✅ IP added to ACR firewall"
+                sleep 10
+
+          - task: Docker@2
+            displayName: 'Login to ACR'
+            condition: ne(variables['Build.Reason'], 'PullRequest')
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: build
+              repository: $(imageName)
+              dockerfile: $(dockerfilePath)
+              containerRegistry: $(acrServiceConnection)
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+                latest
+              arguments: |
+                --build-arg VERSION=$(Build.SourceBranchName)
+                --build-arg COMMIT=$(Build.SourceVersion)
+
+          - task: Docker@2
+            displayName: 'Push to ACR'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              command: push
+              repository: $(imageName)
+              containerRegistry: $(acrServiceConnection)
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+                latest
+
+          - task: AzureCLI@2
+            displayName: 'Remove Pipeline IP from ACR Firewall'
+            condition: always()
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                echo "Removing IP: $PIPELINE_IP"
+                az acr network-rule remove --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                echo "✅ IP removed from ACR firewall"
+
+  # ===== STAGE 5: Scan Docker Image =====
+  - stage: ImageScan
+    displayName: 'Docker Image Security Scan'
+    dependsOn: Build
+    condition: and(succeeded(), eq('${{ parameters.enableImageScan }}', true), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: ScanImage
+        displayName: 'Trivy Image Scan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Bash@3
+            displayName: 'Install Trivy'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Installing Trivy..."
+                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+                echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+                sudo apt-get update
+                sudo apt-get install trivy -y
+                echo "✅ Trivy installed"
+
+          - task: AzureCLI@2
+            displayName: 'Scan Docker Image'
+            continueOnError: ${{ eq(parameters.failOnImageScan, false) }}
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Logging into ACR..."
+                az acr login --name YOUR_ACR_NAME
+                
+                IMAGE=$(containerRegistry)/$(imageName):$(Build.BuildId)
+                echo "Scanning image: $IMAGE"
+                
+                # Vulnerability scan
+                trivy image --severity HIGH,CRITICAL \
+                  --format sarif \
+                  --output $(Build.ArtifactStagingDirectory)/trivy-image-results.sarif \
+                  $IMAGE
+                
+                echo "=== Vulnerability Scan ==="
+                trivy image --severity HIGH,CRITICAL $IMAGE
+                
+                # Config scan
+                echo "=== Configuration Scan ==="
+                trivy image --scanners config --severity HIGH,CRITICAL $IMAGE
+                
+                # Secret scan
+                echo "=== Secret Scan ==="
+                trivy image --scanners secret --severity HIGH,CRITICAL $IMAGE
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Image Scan Results'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/trivy-image-results.sarif'
+              ArtifactName: 'trivy-image-sarif'
+              publishLocation: 'Container'
+
+  # ===== STAGE 6: Force Manual Push =====
+  - stage: ForcePush
+    displayName: 'Force Push (Manual Override)'
+    dependsOn: Build
+    condition: |
+      and(
+        in(dependencies.Build.result, 'Succeeded', 'Skipped'),
+        ne('${{ parameters.manualTag }}', '')
+      )
+    jobs:
+      - job: ForcePushImage
+        displayName: 'Force Push to Manual Tag'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Add Pipeline IP to ACR Firewall'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                echo "Pipeline IP: $PIPELINE_IP"
+                az acr network-rule add --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                sleep 10
+
+          - task: Docker@2
+            displayName: 'Login to ACR'
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Bash@3
+            displayName: 'Force Push to Manual Tag'
+            inputs:
+              targetType: 'inline'
+              script: |
+                set -e  # Exit on any error
+                
+                MANUAL_TAG="${{ parameters.manualTag }}"
+                BUILD_IMAGE="$(containerRegistry)/$(imageName):$(Build.BuildId)"
+                MANUAL_IMAGE="$(containerRegistry)/$(imageName):$MANUAL_TAG"
+                
+                echo "⚠️  FORCE PUSH MODE ACTIVATED"
+                echo "Manual Tag: $MANUAL_TAG"
+                echo "Source Image: $BUILD_IMAGE"
+                
+                # Pull the build image
+                echo "Pulling build image..."
+                if ! docker pull "$BUILD_IMAGE"; then
+                  echo "❌ ERROR: Failed to pull image $BUILD_IMAGE"
+                  echo "Image may not exist in ACR. Check Build stage logs."
+                  exit 1
+                fi
+                
+                # Tag with manual tag
+                echo "Tagging image..."
+                docker tag "$BUILD_IMAGE" "$MANUAL_IMAGE"
+                
+                # Force push (will overwrite if exists)
+                echo "Pushing to ACR..."
+                if ! docker push "$MANUAL_IMAGE"; then
+                  echo "❌ ERROR: Failed to push image $MANUAL_IMAGE"
+                  exit 1
+                fi
+                
+                echo "✅ Successfully force pushed to tag: $MANUAL_TAG"
+
+          - task: AzureCLI@2
+            displayName: 'Remove Pipeline IP from ACR Firewall'
+            condition: always()
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                az acr network-rule remove --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                echo "✅ IP removed"
+
+  # ===== STAGE 7: Tag Release =====
+  - stage: TagRelease
+    displayName: 'Tag Release Version'
+    dependsOn:
+      - Build
+      - ImageScan
+    condition: |
+      and(
+        succeeded(),
+        startsWith(variables['Build.SourceBranch'], 'refs/tags/v'),
+        in(dependencies.ImageScan.result, 'Succeeded', 'Skipped'),
+        eq('${{ parameters.manualTag }}', '')
+      )
+    jobs:
+      - job: TagImage
+        displayName: 'Tag with Semantic Version'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Add Pipeline IP to ACR Firewall'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                echo "Pipeline IP: $PIPELINE_IP"
+                az acr network-rule add --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                sleep 10
+
+          - task: Docker@2
+            displayName: 'Login to ACR'
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Bash@3
+            displayName: 'Tag and Push Versions'
+            inputs:
+              targetType: 'inline'
+              script: |
+                VERSION=${BUILD_SOURCEBRANCH#refs/tags/v}
+                echo "Tagging version: $VERSION"
+                
+                docker pull $(containerRegistry)/$(imageName):$(Build.BuildId)
+                
+                # Tag with full version
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$VERSION
+                docker push $(containerRegistry)/$(imageName):$VERSION
+                
+                # Tag major.minor
+                MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$MAJOR_MINOR
+                docker push $(containerRegistry)/$(imageName):$MAJOR_MINOR
+                
+                # Tag major
+                MAJOR=$(echo $VERSION | cut -d. -f1)
+                docker tag $(containerRegistry)/$(imageName):$(Build.BuildId) \
+                  $(containerRegistry)/$(imageName):$MAJOR
+                docker push $(containerRegistry)/$(imageName):$MAJOR
+                
+                echo "✅ Tagged: $VERSION, $MAJOR_MINOR, $MAJOR"
+
+          - task: AzureCLI@2
+            displayName: 'Remove Pipeline IP from ACR Firewall'
+            condition: always()
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                PIPELINE_IP=$(curl -s https://api.ipify.org)
+                az acr network-rule remove --name YOUR_ACR_NAME --ip-address $PIPELINE_IP
+                echo "✅ IP removed"

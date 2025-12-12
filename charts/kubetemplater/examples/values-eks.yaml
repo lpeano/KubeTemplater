@@ -1,0 +1,93 @@
+# Example values for Amazon Elastic Kubernetes Service (EKS) deployment
+# 
+# EKS does NOT support native certificate auto-injection like AKS/GKE.
+# You MUST use either cert-manager or manual certificates for EKS.
+# This example uses cert-manager (recommended).
+#
+# Prerequisites:
+#   1. Install cert-manager:
+#      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+#
+# Usage:
+#   helm install kubetemplater ./charts/kubetemplater \
+#     --namespace kubetemplater-system \
+#     --create-namespace \
+#     -f examples/values-eks.yaml
+
+replicaCount: 2  # High availability in production
+
+image:
+  repository: <aws-account-id>.dkr.ecr.<region>.amazonaws.com/kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "0.2.0"
+
+# Enable pod disruption budget for HA
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8443"
+
+serviceAccount:
+  create: true
+  annotations:
+    # EKS IAM Roles for Service Accounts (IRSA)
+    # eks.amazonaws.com/role-arn: "arn:aws:iam::<account-id>:role/<role-name>"
+  name: "kubetemplater"
+
+# Webhook configuration with cert-manager (REQUIRED for EKS)
+webhook:
+  enabled: true
+  
+  # EKS requires cert-manager or manual certificates
+  # Cloud-native mode does NOT work on EKS
+  certificateMode: "cert-manager"
+  
+  certManager:
+    # Use self-signed issuer (created by chart)
+    issuerName: ""
+    issuerKind: "Issuer"
+    
+    # Alternative: Use ACM Private CA or other issuer
+    # issuerName: "aws-pca-issuer"
+    # issuerKind: "AWSPCAClusterIssuer"
+  
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Fail requests if webhook is unavailable (recommended for security)
+  failurePolicy: Fail
+  
+  # Webhook timeout
+  timeoutSeconds: 10
+
+# Resource limits optimized for production EKS
+resources:
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector for system node group (if using)
+# nodeSelector:
+#   eks.amazonaws.com/nodegroup: system-nodes
+
+# Tolerations for system taints
+# tolerations:
+# - key: CriticalAddonsOnly
+#   operator: Exists
+
+# Affinity for high availability across AZs
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - kubetemplater
+        topologyKey: topology.kubernetes.io/zone
