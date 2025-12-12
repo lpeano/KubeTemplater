@@ -110,7 +110,7 @@ Trivy tenta di scannare l'immagine ACR senza autenticazione.
     scriptType: 'bash'
     inlineScript: |
       # ✅ Login ACR prima dello scan
-      az acr login --name multitenancyinfra
+      az acr login --name myregistry
       
       trivy image $(containerRegistry)/$(imageName):$(Build.BuildId)
 ```

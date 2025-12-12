@@ -416,8 +416,8 @@ spec:
         - name: realm-name-validation
           type: cel
           fieldPath: "metadata.name"
-          cel: "value == 'buffetti-finance'"
-          message: "KeycloakRealm name must be 'buffetti-finance'"
+          cel: "value == 'my-realm'"
+          message: "KeycloakRealm name must be 'my-realm'"
         - name: keycloak-ref-kind-validation
           type: cel
           fieldPath: "spec.keycloakRef.kind"
@@ -426,8 +426,8 @@ spec:
         - name: keycloak-ref-name-validation
           type: cel
           fieldPath: "spec.keycloakRef.name"
-          cel: "value == 'cluster-buffetti'"
-          message: "keycloakRef.name must be 'cluster-buffetti'"
+          cel: "value == 'my-keycloak'"
+          message: "keycloakRef.name must be 'my-keycloak'"
 ```
 
 **Template:**
@@ -435,7 +435,7 @@ spec:
 apiVersion: kubetemplater.io/v1alpha1
 kind: KubeTemplate
 metadata:
-  name: buffetti-finance-realm
+  name: my-realm-template
   namespace: smartloop-dev
 spec:
   templates:
@@ -444,13 +444,13 @@ spec:
         apiVersion: v1.edp.epam.com/v1
         kind: KeycloakRealm
         metadata:
-          name: buffetti-finance
-          namespace: keycloak-uat
+          name: my-realm
+          namespace: keycloak
         spec:
-          realmName: buffetti-finance
+          realmName: my-realm
           keycloakRef:
             kind: Keycloak
-            name: cluster-buffetti
+            name: my-keycloak
 ```
 
 This example demonstrates:
