@@ -1,0 +1,136 @@
+# KubeTemplater Controller values
+#
+# NOTE: The controller supports a special annotation on the resources it manages:
+#
+#   kubetemplater.io/replace-enabled: "true"
+#
+# When this annotation is present on a resource (like a Deployment), the controller
+# will perform a "replace" (delete and re-create) operation if an update fails
+# due to an immutable field change.
+
+replicaCount: 3
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v0.5.2"
+
+
+podAnnotations: {}
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "kubetemplater"
+
+# Webhook configuration
+webhook:
+  # Enable or disable the validating webhook
+  enabled: true
+  
+  # Certificate management mode
+  # - "self-signed": Automatically generate and manage self-signed certificates
+  #   (Leader pod generates/renews certificates, stores in Secret)
+  #   (Recommended for most installations - no dependencies)
+  # - "cloud-native": Use cloud provider's native certificate management
+  #   (Works for GKE - auto-injects certificates, NOT supported on AKS/EKS)
+  # - "cert-manager": Use cert-manager for certificate management
+  #   (Requires cert-manager installed in cluster)
+  # - "manual": Provide your own certificates
+  #   (For air-gapped, corporate PKI, or custom setups)
+  certificateMode: "self-signed"
+  
+  # cert-manager configuration (only used when certificateMode=cert-manager)
+  certManager:
+    # Issuer name (leave empty to use self-signed issuer created by chart)
+    issuerName: ""
+    # Issuer kind (Issuer or ClusterIssuer)
+    issuerKind: "Issuer"
+  
+  # Manual certificate configuration (only used when certificateMode=manual)
+  # Provide base64-encoded PEM certificate and key
+  certificate:
+    caBundle: ""
+    tlsCert: ""
+    tlsKey: ""
+  
+  # Webhook service configuration
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Webhook failure policy (Fail or Ignore)
+  # Fail: Reject requests if webhook is unavailable (recommended)
+  # Ignore: Allow requests if webhook is unavailable
+  failurePolicy: Fail
+  
+  # Webhook timeout in seconds
+  timeoutSeconds: 10
+
+# Performance tuning parameters
+# All parameters are configurable without rebuilding the image
+tuning:
+  # Number of concurrent worker goroutines processing templates
+  # Default: 3, Range: 1-20, Recommended: 3-10
+  # Higher values = more throughput but more CPU/memory usage
+  numWorkers: 3
+  
+  # Policy cache time-to-live in seconds
+  # Default: 300 (5 minutes), Range: 60-600
+  # Lower values = fresher data but more API calls
+  # Recommended: 180-240s (active changes), 300-600s (stable)
+  cacheTTL: 300
+  
+  # Drift detection reconciliation interval in seconds
+  # Default: 60 (1 minute), Range: 30-300
+  # Lower values = faster drift detection but more CPU usage
+  # Recommended: 30-45s (critical), 60s (normal), 120s (low-priority)
+  periodicReconcileInterval: 60
+  
+  # Work queue retry configuration
+  queue:
+    # Maximum retry attempts before cooldown period
+    # Default: 5, Range: 1-10
+    maxRetries: 5
+    
+    # Initial retry delay in seconds (exponential backoff starts here)
+    # Default: 1, Range: 1-10
+    # Progression: 1s -> 2s -> 4s -> 8s -> 16s...
+    initialRetryDelay: 1
+    
+    # Maximum retry delay cap in seconds
+    # Default: 300 (5 minutes), Range: 60-600
+    # Lower = faster recovery cycles
+    maxRetryDelay: 300
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 2000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Tolerations to run on any node
+tolerations:
+  - operator: Exists
+
+# Pod anti-affinity to spread across nodes for HA
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kubetemplater
+          topologyKey: kubernetes.io/hostname

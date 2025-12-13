@@ -1,0 +1,80 @@
+# Large-Scale Configuration
+# For deployments with 15,000-30,000 templates
+# Maximum performance with increased resources
+
+replicaCount: 5              # Higher baseline for large scale
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "v0.6.0"
+
+# Performance tuning - Large scale
+tuning:
+  numWorkers: 10             # Maximum workers
+  cacheTTL: 180              # 3 minutes - balance freshness/load
+  periodicReconcileInterval: 45  # Frequent reconciliation
+  queue:
+    maxRetries: 10           # Very persistent
+    initialRetryDelay: 1
+    maxRetryDelay: 120       # Fast recovery (2 minutes)
+
+# Webhook configuration
+webhook:
+  enabled: true
+  certificateMode: "self-signed"
+  failurePolicy: Fail
+  timeoutSeconds: 15         # Increased timeout for scale
+
+# Increased resources for 10 workers
+resources:
+  limits:
+    cpu: 4000m               # 4 cores for 10 workers
+    memory: 1Gi              # More memory for larger cache/queue
+  requests:
+    cpu: 1000m               # Higher guaranteed resources
+    memory: 512Mi
+
+# Tolerate any node
+tolerations:
+  - operator: Exists
+
+# Strong anti-affinity for HA
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kubetemplater
+          topologyKey: kubernetes.io/hostname
+    # Also spread across zones if available
+    - weight: 50
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - kubetemplater
+        topologyKey: topology.kubernetes.io/zone
+
+serviceAccount:
+  create: true
+  name: "kubetemplater"
+
+# Optional: Node affinity for dedicated node pool
+# Uncomment if using dedicated nodes for operator
+# nodeSelector:
+#   workload: kubetemplater
+
+# Optional: Taints for dedicated nodes
+# tolerations:
+#   - key: "kubetemplater"
+#     operator: "Equal"
+#     value: "true"
+#     effect: "NoSchedule"

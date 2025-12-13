@@ -1,0 +1,47 @@
+# Resource-Constrained Configuration
+# For development clusters or cost-optimized environments
+# Minimal resource footprint
+
+replicaCount: 2              # Reduced for minimal footprint
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "v0.6.0"
+
+# Performance tuning - Resource constrained
+tuning:
+  numWorkers: 2              # Minimal workers
+  cacheTTL: 600              # 10 minutes - maximize cache efficiency
+  periodicReconcileInterval: 120  # Less frequent reconciliation
+  queue:
+    maxRetries: 5            # Standard retry
+    initialRetryDelay: 2     # Slightly conservative
+    maxRetryDelay: 300
+
+# Webhook configuration
+webhook:
+  enabled: true
+  certificateMode: "self-signed"
+  failurePolicy: Fail
+  timeoutSeconds: 10
+
+# Minimal resource limits
+resources:
+  limits:
+    cpu: 1000m               # Reduced CPU
+    memory: 256Mi            # Reduced memory
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Tolerate any node
+tolerations:
+  - operator: Exists
+
+# No anti-affinity (allow co-location)
+affinity: {}
+
+serviceAccount:
+  create: true
+  name: "kubetemplater"
