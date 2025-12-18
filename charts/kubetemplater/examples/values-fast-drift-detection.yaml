@@ -1,0 +1,58 @@
+# Fast Drift Detection Configuration
+# For critical workloads requiring immediate drift correction
+# Optimized for low-latency reconciliation
+
+replicaCount: 3
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "v0.6.1"
+
+# Performance tuning - Fast drift detection
+tuning:
+  numWorkers: 5              # Balanced worker count
+  cacheTTL: 120              # 2 minutes - very fresh data
+  policyCacheTTL: 30         # 30 seconds - maximum security
+  periodicReconcileInterval: 30  # Minimum interval (fastest drift detection)
+  queue:
+    maxRetries: 5            # Standard retry
+    initialRetryDelay: 1
+    maxRetryDelay: 300
+
+# Webhook configuration
+webhook:
+  enabled: true
+  certificateMode: "self-signed"
+  failurePolicy: Fail        # Strict validation for critical workloads
+  timeoutSeconds: 10
+
+# Standard resource limits
+resources:
+  limits:
+    cpu: 2000m
+    memory: 512Mi
+  requests:
+    cpu: 200m                # Higher request for guaranteed performance
+    memory: 256Mi
+
+# Standard HA configuration
+tolerations:
+  - operator: Exists
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kubetemplater
+          topologyKey: kubernetes.io/hostname
+
+serviceAccount:
+  create: true
+  name: "kubetemplater"

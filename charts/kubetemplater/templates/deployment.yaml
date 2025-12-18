@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubetemplater.fullname" . }}
+  labels:
+    {{- include "kubetemplater.labels" . | nindent 4 }}
+  namespace: {{.Release.Namespace}}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubetemplater.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kubetemplater.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - args:
+        - --metrics-bind-address=:8443
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        {{- if and .Values.webhook.enabled (eq .Values.webhook.certificateMode "self-signed") }}
+        - --webhook-cert-secret-name={{ include "kubetemplater.fullname" . }}-webhook-cert
+        - --webhook-service-name={{ include "kubetemplater.fullname" . }}-webhook-service
+        - --webhook-configuration-name={{ include "kubetemplater.fullname" . }}-validating-webhook-configuration
+        {{- end }}
+        command:
+        - /manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Performance tuning parameters
+        - name: NUM_WORKERS
+          value: {{ .Values.tuning.numWorkers | quote }}
+        - name: CACHE_TTL
+          value: {{ .Values.tuning.cacheTTL | quote }}
+        - name: POLICY_CACHE_TTL
+          value: {{ .Values.tuning.policyCacheTTL | quote }}
+        - name: PERIODIC_RECONCILE_INTERVAL
+          value: {{ .Values.tuning.periodicReconcileInterval | quote }}
+        - name: QUEUE_MAX_RETRIES
+          value: {{ .Values.tuning.queue.maxRetries | quote }}
+        - name: QUEUE_INITIAL_RETRY_DELAY
+          value: {{ .Values.tuning.queue.initialRetryDelay | quote }}
+        - name: QUEUE_MAX_RETRY_DELAY
+          value: {{ .Values.tuning.queue.maxRetryDelay | quote }}
+        - name: QUEUE_MAX_RETRY_CYCLES
+          value: {{ .Values.tuning.queue.maxRetryCycles | quote }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        - containerPort: 8443
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        lifecycle:
+          preStop:
+            exec:
+              # Give manager time to release leader lease gracefully
+              # LeaderElectionReleaseOnCancel handles the actual release
+              command: [\"/bin/sh\", \"-c\", \"sleep 5\"]
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: {{ include "kubetemplater.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 30  # Increased from 10 to allow graceful lease release
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,87 @@
+# Example values for Azure Kubernetes Service (AKS) deployment
+# 
+# This file demonstrates recommended configuration for AKS clusters
+# with self-signed certificate management (automatic, no dependencies).
+#
+# Usage:
+#   helm install kubetemplater ./charts/kubetemplater \
+#     --namespace kubetemplater-system \
+#     --create-namespace \
+#     -f examples/values-aks.yaml
+
+replicaCount: 2  # High availability in production
+
+image:
+  repository: <your-acr-registry>.azurecr.io/kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "0.3.2"
+
+# Enable pod disruption budget for HA
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8443"
+
+serviceAccount:
+  create: true
+  annotations:
+    # Azure Workload Identity (if using)
+    # azure.workload.identity/client-id: "<your-client-id>"
+  name: "kubetemplater"
+
+# Webhook configuration for AKS
+webhook:
+  enabled: true
+  
+  # Use self-signed certificate management (recommended for AKS)
+  # Leader pod automatically generates/renews certificates
+  # NO cert-manager required, NO external dependencies
+  # NOTE: cloud-native mode does NOT work on AKS (only on GKE)
+  certificateMode: "self-signed"
+  
+  # Alternative: Use cert-manager (if already installed in cluster)
+  # certificateMode: "cert-manager"
+  # certManager:
+  #   issuerName: ""         # Empty = self-signed issuer created by chart
+  #   issuerKind: "Issuer"
+  
+  service:
+    port: 443
+    targetPort: 9443
+  
+  # Fail requests if webhook is unavailable (recommended for security)
+  failurePolicy: Fail
+  
+  # Webhook timeout
+  timeoutSeconds: 10
+
+# Resource limits optimized for production AKS
+resources:
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector for system node pool (if using)
+# nodeSelector:
+#   agentpool: system
+
+# Tolerations for system taints
+# tolerations:
+# - key: CriticalAddonsOnly
+#   operator: Exists
+
+# Affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - kubetemplater
+        topologyKey: kubernetes.io/hostname

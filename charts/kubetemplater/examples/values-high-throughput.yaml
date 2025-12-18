@@ -1,0 +1,58 @@
+# High-Throughput Configuration
+# For deployments with frequent template creation bursts (5,000-15,000 templates)
+# Optimized for maximum processing speed
+
+replicaCount: 3
+
+image:
+  repository: kubetemplater
+  pullPolicy: IfNotPresent
+  tag: "v0.6.1"
+
+# Performance tuning - High throughput
+tuning:
+  numWorkers: 8              # Increased for parallel processing
+  cacheTTL: 240              # 4 minutes - balance freshness/performance
+  policyCacheTTL: 60         # 1 minute - standard security
+  periodicReconcileInterval: 50  # Frequent drift checks
+  queue:
+    maxRetries: 7            # More persistent retry
+    initialRetryDelay: 1
+    maxRetryDelay: 180       # Faster recovery (3 minutes)
+
+# Webhook configuration
+webhook:
+  enabled: true
+  certificateMode: "self-signed"
+  failurePolicy: Fail
+  timeoutSeconds: 10
+
+# Increased resource limits for higher worker count
+resources:
+  limits:
+    cpu: 3000m               # Higher CPU for 8 workers
+    memory: 768Mi
+  requests:
+    cpu: 500m
+    memory: 256Mi
+
+# Standard HA configuration
+tolerations:
+  - operator: Exists
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kubetemplater
+          topologyKey: kubernetes.io/hostname
+
+serviceAccount:
+  create: true
+  name: "kubetemplater"

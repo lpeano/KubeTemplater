@@ -1,0 +1,138 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: kubetemplates.kubetemplater.io
+spec:
+  group: kubetemplater.io
+  names:
+    kind: KubeTemplate
+    listKind: KubeTemplateList
+    plural: kubetemplates
+    singular: kubetemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.processingPhase
+      name: Status
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.retryCycle
+      name: Retry Cycle
+      priority: 1
+      type: integer
+    - jsonPath: .status.resourcesSynced
+      name: Resources
+      priority: 1
+      type: string
+    - jsonPath: .status.lastReconcileTime
+      name: Last Reconcile
+      priority: 1
+      type: date
+    - jsonPath: .status.driftDetectionCount
+      name: Drift Count
+      priority: 1
+      type: integer
+    - jsonPath: .status.lastDriftDetected
+      name: Last Drift
+      priority: 1
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KubeTemplate is the Schema for the kubetemplates API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KubeTemplateSpec defines the desired state of KubeTemplate.
+            properties:
+              templates:
+                items:
+                  description: Template defines a template to be rendered.
+                  properties:
+                    object:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    referenced:
+                      description: |-
+                        Referenced determines if the created object should have the policy as OwnerReference.
+                        When true, the policy will be added as an owner reference to the created resource.
+                        Default: false
+                      type: boolean
+                    replace:
+                      type: boolean
+                  required:
+                  - object
+                  type: object
+                type: array
+            required:
+            - templates
+            type: object
+          status:
+            description: KubeTemplateStatus defines the observed state of KubeTemplate.
+            properties:
+              appliedSpecHash:
+                description: AppliedSpecHash is the SHA256 hash of the spec that was
+                  last successfully applied
+                type: string
+              driftDetectionCount:
+                type: integer
+              dryRunChecks:
+                type: integer
+              lastDriftDetected:
+                format: date-time
+                type: string
+              lastReconcileTime:
+                format: date-time
+                type: string
+              pausedAt:
+                description: PausedAt is the timestamp when the template was paused
+                format: date-time
+                type: string
+              pausedReason:
+                description: PausedReason describes why the template is paused
+                type: string
+              processedAt:
+                format: date-time
+                type: string
+              processingPhase:
+                type: string
+              queuedAt:
+                format: date-time
+                type: string
+              resourcesSynced:
+                type: integer
+              resourcesTotal:
+                type: integer
+              retryCount:
+                type: integer
+              retryCycle:
+                type: integer
+              status:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
